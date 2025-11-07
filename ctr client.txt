@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+# ctr_client_msg.py
+# Simple CTR test client: send a plaintext message to a CTR server, receive and decrypt the ciphertext.
+# Note: CTR is a secure mode, but the KEY must be kept secret.
+
+import sys, os
+from Crypto.Cipher import AES
+
+# 부모 디렉토리에서 common.py 임포트 경로 설정
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from common import tcp_connect, send_blob, recv_blob
+
+# 서버와 동일한 교육용 키 정의 (복호화를 위해 필요)
+KEY = b"THIS_IS_16_BYTE!"
+NONCE_LENGTH = 8 # 서버가 8바이트 Nonce를 사용했음을 가정
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python3 ctr_client.py <message> [server_ip] [port]")
+        sys.exit(1)
+
+    # 인자 처리
+    msg = sys.argv[1].encode()
+    host = "127.0.0.1" if len(sys.argv) < 3 else sys.argv[2]
+    port = 5555 if len(sys.argv) < 4 else int(sys.argv[3])
+    
+    print("Message bytes len:", len(msg))
+
+    try:
+        # 1. 연결 및 평문 전송
+        s = tcp_connect(host, port)
+        send_blob(s, msg)
+        print("Sent plaintext to server.")
+        
+        # 2. Nonce + 암호문 수신
+        received_data = recv_blob(s)
+        s.close()
+        
+        # 3. Nonce와 암호문 분리
+        # 수신된 데이터는 [Nonce (8 bytes)] + [Ciphertext] 형식입니다.
+        nonce = received_data[:NONCE_LENGTH]
+        ct = received_data[NONCE_LENGTH:]
+        
+        print("Received total bytes:", len(received_data))
+        print("Nonce (hex):", nonce.hex())
+        print("Ciphertext (hex):", ct.hex())
+
+        # 4. 복호화
+        # Nonce를 사용하여 복호화 객체 생성
+        decipher = AES.new(KEY, AES.MODE_CTR, nonce=nonce)
+        
+        # 복호화 시 평문 길이 == 암호문 길이
+        decrypted_pt = decipher.decrypt(ct)
+        
+        print("-" * 30)
+        print("Decrypted Plaintext:", decrypted_pt.decode())
+        print("Decrypted length:", len(decrypted_pt), "bytes")
+
+    except Exception as e:
+        print("An error occurred:", e)
+
+if __name__ == "__main__":
+    main()
